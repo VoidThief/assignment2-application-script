@@ -203,7 +203,7 @@ EOL
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
   # Remove the default Nginx configuration file
-  rm /etc/nginx/sites-*/default
+  rm /etc/nginx/sites-available/default
 
   # Restart the Nginx service
   nginx -t
