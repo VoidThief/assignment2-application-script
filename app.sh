@@ -74,7 +74,7 @@ function run_prompt_for_domain_if_required() {
 # Install core system packages
 function run_package_installs() {
   apt-get update
-  apt-get install -y git unzip nginx php8.1 curl php8.1-curl php8.1-mbstring php8.1-ldap \
+  apt-get install --no-install-recommends -y git unzip nginx php8.1 curl php8.1-curl php8.1-mbstring php8.1-ldap \
   php8.1-xml php8.1-zip php8.1-gd php8.1-mysql mysql-server-8.0
 }
 
