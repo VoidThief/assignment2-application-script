@@ -167,7 +167,7 @@ server {
   listen 8080;
   listen [::]:8080;
 
-  server_name 52.25.19.255;
+  server_name localhost;
 
   root /var/www/bookstack/public;
   index index.php index.html;
@@ -194,13 +194,14 @@ server {
   index index.html;
 
   location /bookstack/ {
-    proxy_pass http://52.25.19.255:8080/;
+    proxy_pass http://localhost:8080/;
     proxy_redirect off;
   }
 
 }
 EOL
   # Create a symbolic link to the sites-enabled directory
+  rm /etc/nginx/sites-enabled/bookstack
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
   # Remove the default Nginx configuration file
