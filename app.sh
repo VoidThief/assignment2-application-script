@@ -174,7 +174,6 @@ server {
 
   location / {
     try_files $uri $uri/ /index.php?$query_string;
-    autoindex on;
   }
 
   location ~ \.php$ {
@@ -188,7 +187,7 @@ server {
   listen 80;
   listen [::]:80;
 
-  server_name 52.25.19.255;
+  server_name 34.211.43.116;
 
   root /var/www/html;
   index index.html;
@@ -201,16 +200,14 @@ server {
 }
 EOL
   # Create a symbolic link to the sites-enabled directory
-  rm /etc/nginx/sites-enabled/bookstack
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
   # Remove the default Nginx configuration file
-  rm /etc/nginx/sites-available/default
+  rm /etc/nginx/sites-*/default
 
   # Restart the Nginx service
   nginx -t
-  service nginx stop
-  service nginx start
+  service nginx restart
 
 }
 
