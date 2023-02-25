@@ -14,7 +14,7 @@ SCRIPT_USER="${SUDO_USER:-$USER}"
 CURRENT_IP=$(ip addr | grep 'state UP' -A4 | grep 'inet ' | awk '{print $2}' | cut -f1  -d'/')
 
 # Generate a password for the database
-DB_PASS="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13)"
+#DB_PASS="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13)"
 
 # The directory to install BookStack into
 BOOKSTACK_DIR="/var/www/bookstack"
@@ -91,8 +91,6 @@ function run_database_setup() {
 
 # Download BookStack
 function run_bookstack_download() {
-  cd /var
-  mkdir www
   cd /var/www || exit
   git clone https://github.com/BookStackApp/BookStack.git --branch release --single-branch bookstack
 }
@@ -162,7 +160,7 @@ function run_set_application_file_permissions() {
 # Setup nginx with the needed modules and config
 function run_configure_nginx() {
   # Set-up the required BookStack nginx config
-  cat > /etc/nginx/sites-available/bookstack << EOL
+  cat >/etc/nginx/sites-available/bookstack<< EOL
 server {
   listen 8080;
   listen [::]:8080;
@@ -174,6 +172,7 @@ server {
 
   location / {
     try_files $uri $uri/ /index.php?$query_string;
+    autoindex on;
   }
 
   location ~ \.php$ {
@@ -187,7 +186,7 @@ server {
   listen 80;
   listen [::]:80;
 
-  server_name 34.211.43.116;
+  server_name 52.12.207.136;
 
   root /var/www/html;
   index index.html;
@@ -203,7 +202,7 @@ EOL
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
   # Remove the default Nginx configuration file
-  rm /etc/nginx/sites-available/default
+  rm /etc/nginx/sites-*/default
 
   # Restart the Nginx service
   nginx -t
