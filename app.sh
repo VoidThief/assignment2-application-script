@@ -82,9 +82,9 @@ function run_package_installs() {
 # Set up database
 function run_database_setup() {
   # Set up DB
-  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="CREATE DATABASE bookstack;"
-  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="CREATE USER 'bookstack'@'%' IDENTIFIED BY '$RDS_PASSWORD';"
-  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'%';"
+  mysql -h $endpoint -u root -p$RDS_PASSWORD --execute="CREATE DATABASE bookstack;"
+  mysql -h $endpoint -u root -p$RDS_PASSWORD --execute="CREATE USER 'bookstack'@'%' IDENTIFIED BY '$RDS_PASSWORD';"
+  mysql -h $endpoint -u root -p$RDS_PASSWORD --execute="GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'%';"
   $endpoint -u admin -p$RDS_PASSWORD --execute="FLUSH PRIVILEGES;"
 }
 
