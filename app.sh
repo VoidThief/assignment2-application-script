@@ -1,8 +1,10 @@
 #!/bin/bash
 
+# Source RDS endpoint data
+source env.sh
+
 echo "This script installs a new BookStack instance on a fresh Ubuntu 22.04 server."
 echo "This script does not ensure system security."
-echo ""
 
 # Generate a path for a log file to output into for debugging
 LOGPATH=$(realpath "bookstack_install_$(date +%s).log")
@@ -14,16 +16,12 @@ SCRIPT_USER="${SUDO_USER:-$USER}"
 CURRENT_IP=$(ip addr | grep 'state UP' -A4 | grep 'inet ' | awk '{print $2}' | cut -f1  -d'/')
 
 # Generate a password for the database
-#DB_PASS="$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13)"
+RDS_PASSWORD="password"
 
 # The directory to install BookStack into
 BOOKSTACK_DIR="/var/www/bookstack"
 
 # Get the domain from the arguments (Requested later if not set)
-DOMAIN=$1
-RDS_HOST="assignment2-rds.ceyucdq8yxkk.us-west-2.rds.amazonaws.com"
-RDS_USERNAME="root"
-RDS_PASSWORD="24862486"
 
 # Prevent interactive prompts in applications
 export DEBIAN_FRONTEND=noninteractive
@@ -49,11 +47,11 @@ function run_pre_install_checks() {
     error_out "This script must be ran with root/sudo privileges"
   fi
 
-  # Check if nginx appears to be installed and exit if so
-  #if [ -d "/etc/nginx/sites-enabled" ]
-  #then
-  #  error_out "This script is intended for a fresh server install, existing nginx config found, aborting install"
-  #fi
+  # Check if Nginx appears to be installed and exit if not
+  if [ -d "/etc/nginx/sites-enabled" ]
+  then
+    error_out "This script is intended for a fresh server install, existing Nginx config found, aborting install"
+  fi
 }
 
 # Fetch domain to use from first provided parameter,
@@ -76,19 +74,18 @@ function run_prompt_for_domain_if_required() {
 
 # Install core system packages
 function run_package_installs() {
-  apt-get update
-  apt-get install -y git unzip nginx php8.1 php8.1-fpm curl php8.1-curl php8.1-mbstring php8.1-ldap \
+  apt update
+  apt install -y git unzip nginx php8.1 php8.1-fpm curl php8.1-curl php8.1-mbstring php8.1-ldap \
   php8.1-xml php8.1-zip php8.1-gd php8.1-mysql mysql-client
 }
 
 # Set up database
 function run_database_setup() {
-  # Set up RDS
-  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="CREATE DATABASE bookstack;"
-  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="CREATE USER 'bookstack'@'%' IDENTIFIED BY '$RDS_PASSWORD';"
-  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'%';"
-  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="FLUSH PRIVILEGES;"
-  echo 'Creating RDS Database'
+  # Set up DB
+  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="CREATE DATABASE bookstack;"
+  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="CREATE USER 'bookstack'@'%' IDENTIFIED BY '$RDS_PASSWORD';"
+  mysql -h $endpoint -u admin -p$RDS_PASSWORD --execute="GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'%';"
+  $endpoint -u admin -p$RDS_PASSWORD --execute="FLUSH PRIVILEGES;"
 }
 
 # Download BookStack
@@ -113,7 +110,7 @@ function run_install_composer() {
   php composer-setup.php --quiet
   rm composer-setup.php
 
-  # Move composer to global installations
+  # Move composer to global installation
   mv composer.phar /usr/local/bin/composer
 }
 
@@ -129,11 +126,10 @@ function run_update_bookstack_env() {
   cd "$BOOKSTACK_DIR" || exit
   cp .env.example .env
   sed -i.bak "s@APP_URL=.*\$@APP_URL=http://$DOMAIN@" .env
-  sed -i.bak "s/DB_HOST=.*\$/DB_HOST=$RDS_HOST/" .env
-  sed -i.bak 's/DB_PORT=.*$/DB_PORT=3306/' .env
+  sed -i.bak "s/DB_HOST=.*\$/DB_HOST=$endpoint/" .env
   sed -i.bak 's/DB_DATABASE=.*$/DB_DATABASE=bookstack/' .env
-  sed -i.bak "s/DB_USERNAME=.*$/DB_USERNAME=bookstack/" .env
-  sed -i.bak "s/DB_PASSWORD=.*\$/DB_PASSWORD=$RDS_PASSWORD/" .env
+  sed -i.bak 's/DB_USERNAME=.*$/DB_USERNAME=bookstack/' .env
+  sed -i.bak "s/RDS_PASSWORDWORD=.*\$/RDS_PASSWORDWORD=$RDS_PASSWORD/" .env
   # Generate the application key
   php artisan key:generate --no-interaction --force
 }
@@ -160,9 +156,9 @@ function run_set_application_file_permissions() {
 }
 
 # Setup nginx with the needed modules and config
-function run_configure_nginx() {
+function setup_nginx() {
   # Set-up the required BookStack nginx config
-  cat >/etc/nginx/sites-available/bookstack<< EOL
+  cat >/etc/nginx/sites-available/bookstack <<EOL
 server {
   listen 80;
   listen [::]:80;
@@ -173,30 +169,25 @@ server {
   index index.php index.html;
 
   location / {
-    try_files $uri $uri/ /index.php?$query_string;
+        try_files \$uri \$uri/ /index.php\$is_args\$args;
   }
 
   location ~ \.php$ {
     include snippets/fastcgi-php.conf;
     fastcgi_pass unix:/run/php/php8.1-fpm.sock;
   }
-
 }
 EOL
-  # copy bookstack folder to sites-enabled
+  # Copy bookstack folder to sites-enabled
   cp /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
-  # Create a symbolic link to the sites-enabled directory
+  # Enable the bookstack
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
+  rm -f /etc/nginx/sites-enabled/default /etc/nginx/site-available/default
 
-  # Remove the default Nginx configuration file
-  rm -f /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
-
-  # Restart the Nginx service
-  nginx -t
+  # Restart nginx and php
   systemctl restart nginx
   systemctl restart php8.1-fpm
-
 }
 
 info_msg "This script logs full output to $LOGPATH which may help upon issues."
@@ -204,9 +195,7 @@ sleep 1
 
 run_pre_install_checks
 run_prompt_for_domain_if_required
-info_msg ""
-info_msg "Installing using the domain or IP \"$DOMAIN\""
-info_msg ""
+info_msg "Give ec2 ip \"$DOMAIN\""
 sleep 1
 
 info_msg "[1/9] Installing required system packages... (This may take several minutes)"
@@ -234,7 +223,7 @@ info_msg "[8/9] Setting BookStack file & folder permissions..."
 run_set_application_file_permissions >> "$LOGPATH" 2>&1
 
 info_msg "[9/9] Configuring nginx server..."
-run_configure_nginx >> "$LOGPATH" 2>&1
+setup_nginx >> "$LOGPATH" 2>&1
 
 info_msg "----------------------------------------------------------------"
 info_msg "Setup finished, your BookStack instance should now be installed!"
