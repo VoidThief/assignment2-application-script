@@ -21,6 +21,9 @@ BOOKSTACK_DIR="/var/www/bookstack"
 
 # Get the domain from the arguments (Requested later if not set)
 DOMAIN=$1
+RDS_HOST="assignment2-rds.ceyucdq8yxkk.us-west-2.rds.amazonaws.com"
+RDS_USERNAME="root"
+RDS_PASSWORD="24862486"
 
 # Prevent interactive prompts in applications
 export DEBIAN_FRONTEND=noninteractive
@@ -74,18 +77,17 @@ function run_prompt_for_domain_if_required() {
 # Install core system packages
 function run_package_installs() {
   apt-get update
-  apt-get install --no-install-recommends -y git unzip nginx php8.1 curl php8.1-curl php8.1-mbstring php8.1-ldap \
-  php8.1-xml php8.1-zip php8.1-gd php8.1-mysql mysql-server-8.0
+  apt-get install -y git unzip nginx php8.1 php8.1-fpm curl php8.1-curl php8.1-mbstring php8.1-ldap \
+  php8.1-xml php8.1-zip php8.1-gd php8.1-mysql mysql-client
 }
 
 # Set up database
 function run_database_setup() {
   # Set up RDS
-  RDS_HOST="assignment2-rds.ceyucdq8yxkk.us-west-2.rds.amazonaws.com"
-  RDS_PORT='3306'
-  RDS_USERNAME='root'
-  RDS_PASSWORD='password'
-  mysql -h $RDS_HOST -P $RDS_PORT -u $RDS_USERNAME -p$RDS_PASSWORD -e "CREATE DATABASE bookstack;"
+  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="CREATE DATABASE bookstack;"
+  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="CREATE USER 'bookstack'@'%' IDENTIFIED BY '$RDS_PASSWORD';"
+  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="GRANT ALL PRIVILEGES ON bookstack.* TO 'bookstack'@'%';"
+  mysql -h $RDS_HOST -u $RDS_USERNAME -p$RDS_PASSWORD --execute="FLUSH PRIVILEGES;"
   echo 'Creating RDS Database'
 }
 
@@ -111,7 +113,7 @@ function run_install_composer() {
   php composer-setup.php --quiet
   rm composer-setup.php
 
-  # Move composer to global installation
+  # Move composer to global installations
   mv composer.phar /usr/local/bin/composer
 }
 
@@ -127,11 +129,11 @@ function run_update_bookstack_env() {
   cd "$BOOKSTACK_DIR" || exit
   cp .env.example .env
   sed -i.bak "s@APP_URL=.*\$@APP_URL=http://$DOMAIN@" .env
-  sed -i.bak "s/DB_HOST=.*$/DB_HOST=assignment2-rds.ceyucdq8yxkk.us-west-2.rds.amazonaws.com/" .env
+  sed -i.bak "s/DB_HOST=.*\$/DB_HOST=$RDS_HOST/" .env
   sed -i.bak 's/DB_PORT=.*$/DB_PORT=3306/' .env
   sed -i.bak 's/DB_DATABASE=.*$/DB_DATABASE=bookstack/' .env
-  sed -i.bak "s/DB_USERNAME=.*$/DB_USERNAME=root/" .env
-  sed -i.bak "s/DB_PASSWORD=.*\$/DB_PASSWORD=password/" .env
+  sed -i.bak "s/DB_USERNAME=.*$/DB_USERNAME=bookstack/" .env
+  sed -i.bak "s/DB_PASSWORD=.*\$/DB_PASSWORD=$RDS_PASSWORD/" .env
   # Generate the application key
   php artisan key:generate --no-interaction --force
 }
@@ -162,42 +164,28 @@ function run_configure_nginx() {
   # Set-up the required BookStack nginx config
   cat >/etc/nginx/sites-available/bookstack<< EOL
 server {
-  listen 8080;
-  listen [::]:8080;
+  listen 80;
+  listen [::]:80;
 
-  server_name localhost;
+  server_name $DOMAIN;
 
   root /var/www/bookstack/public;
   index index.php index.html;
 
   location / {
     try_files $uri $uri/ /index.php?$query_string;
-    autoindex on;
   }
 
   location ~ \.php$ {
     include snippets/fastcgi-php.conf;
     fastcgi_pass unix:/run/php/php8.1-fpm.sock;
   }
-}
-
-
-server {
-  listen 80;
-  listen [::]:80;
-
-  server_name 52.12.207.136;
-
-  root /var/www/html;
-  index index.html;
-
-  location /bookstack/ {
-    proxy_pass http://localhost:8080/;
-    proxy_redirect off;
-  }
 
 }
 EOL
+  # copy bookstack folder to sites-enabled
+  cp /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
+
   # Create a symbolic link to the sites-enabled directory
   ln -s /etc/nginx/sites-available/bookstack /etc/nginx/sites-enabled/bookstack
 
